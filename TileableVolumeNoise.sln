@@ -6,14 +6,22 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TileableVolumeNoise", "Tile
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		debug|Win32 = debug|Win32
 		debug|x64 = debug|x64
+		debug|x86 = debug|x86
+		release|Win32 = release|Win32
 		release|x64 = release|x64
+		release|x86 = release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CF223ED7-0172-4024-9445-84F3A375053E}.debug|Win32.ActiveCfg = debug|x64
 		{CF223ED7-0172-4024-9445-84F3A375053E}.debug|x64.ActiveCfg = debug|x64
 		{CF223ED7-0172-4024-9445-84F3A375053E}.debug|x64.Build.0 = debug|x64
+		{CF223ED7-0172-4024-9445-84F3A375053E}.debug|x86.ActiveCfg = debug|x64
+		{CF223ED7-0172-4024-9445-84F3A375053E}.release|Win32.ActiveCfg = release|x64
 		{CF223ED7-0172-4024-9445-84F3A375053E}.release|x64.ActiveCfg = release|x64
 		{CF223ED7-0172-4024-9445-84F3A375053E}.release|x64.Build.0 = release|x64
+		{CF223ED7-0172-4024-9445-84F3A375053E}.release|x86.ActiveCfg = release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

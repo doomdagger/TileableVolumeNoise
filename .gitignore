@@ -47,4 +47,5 @@ debugErosionXZ28\.tga
 debugErosionXZ4\.tga
 debugErosionXZ8\.tga
 
-
+*.exe
+*.pdb
