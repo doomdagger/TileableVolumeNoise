@@ -1,8 +1,11 @@
 
 
 #include <iostream>
+#include <fstream>
+#include <cinttypes>
 #include <time.h>
 #include <math.h>
+#include <string>
 
 #include "./TileableVolumeNoise.h"
 #include "./libtarga.h"
@@ -17,6 +20,78 @@ void writeTGA(const char* fileName, int width, int height, /*const*/ unsigned ch
 		printf("Failed to write image!\n");
 		printf(tga_error_string(tga_get_last_error()));
 	}
+}
+
+void writeKTX(const std::string &fileName, int origWidth, int origHeight, int origDepth, unsigned char *data, bool tile3D=false)
+{
+	int texDepth = origDepth;
+	int texWidth = origWidth;
+	int texHeight = origHeight;
+	int channels = 4;
+	bool tileEnabled = tile3D && texDepth > 1;
+	if (tileEnabled)
+	{
+		texWidth *= texDepth;
+		texDepth = 1;
+	}
+	int texSize = texWidth * texHeight * texDepth;
+
+	byte header[] = {
+		(char)0xAB, (char)0x4B, (char)0x54, (char)0x58, // first four bytes of Byte[12] identifier
+		(char)0x20, (char)0x31, (char)0x31, (char)0xBB, // next four bytes of Byte[12] identifier
+		(char)0x0D, (char)0x0A, (char)0x1A, (char)0x0A, // final four bytes of Byte[12] identifier
+		(char)0x01, (char)0x02, (char)0x03, (char)0x04, // Byte[4] endianess (Big endian in this case)
+	};
+
+	std::ofstream fs(fileName, std::ios::binary);
+	fs.write(header, 16);
+
+	uint32_t glType = 0x1401; // unsigned byte
+	uint32_t glTypeSize = 1; // 1 byte
+	uint32_t glFormat = 0x1908; // RGBA
+	uint32_t glInterformat = 0x8D7C; // RGBA8UI
+	uint32_t glBaseInternalFormat = 0x1908; // RGBA
+	uint32_t width = (uint32_t)texWidth;
+	uint32_t height = (uint32_t)texHeight;
+	uint32_t depth = (uint32_t)(texDepth == 1 ? 0 : texDepth);
+	uint32_t numOfArrElem = 0;
+	uint32_t numOfFace = 1;
+	uint32_t numOfMip = 1;
+	uint32_t bytesOfKeyVal = 0;
+
+	fs.write(reinterpret_cast<const char*>(&glType), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&glTypeSize), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&glFormat), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&glInterformat), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&glBaseInternalFormat), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&width), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&height), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&depth), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&numOfArrElem), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&numOfFace), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&numOfMip), sizeof uint32_t);
+	fs.write(reinterpret_cast<const char*>(&bytesOfKeyVal), sizeof uint32_t);
+
+	uint32_t imageSize = (uint32_t)(texSize * channels * glTypeSize);
+	fs.write(reinterpret_cast<const char*>(&imageSize), sizeof uint32_t);
+
+	if (tileEnabled)
+	{
+		for (int j = 0; j < origHeight; j++)
+			for (int k = 0; k < origDepth; k++)
+				for (int i = 0; i < origWidth; i++)
+				{
+					int startIndex = k * origWidth * origHeight * channels + j * origWidth * channels + i * channels;
+					fs.write(reinterpret_cast<const char*>(&data[startIndex]), 4);
+				}
+	}
+	else
+	{
+		int dataSize = texSize * channels;
+		fs.write(reinterpret_cast<const char*>(data), texSize * channels);
+	}
+
+	fs.close();
 }
 
 // the remap function used in the shaders as described in Gpu Pro 7. It must match when using pre packed textures
@@ -103,7 +178,7 @@ int main (int argc, char *argv[])
 	int cloudBaseShapeSliceBytes = cloudBaseShapeRowBytes * cloudBaseShapeTextureSize;
 	int cloudBaseShapeVolumeBytes = cloudBaseShapeSliceBytes * cloudBaseShapeTextureSize;
 	unsigned char* cloudBaseShapeTexels = (unsigned char*)malloc(cloudBaseShapeVolumeBytes);
-	unsigned char* cloudBaseShapeTexelsPacked = (unsigned char*)malloc(cloudBaseShapeVolumeBytes);
+	//unsigned char* cloudBaseShapeTexelsPacked = (unsigned char*)malloc(cloudBaseShapeVolumeBytes);
 	parallel_for(int(0), int(cloudBaseShapeTextureSize), [&](int s) //for (int s = 0; s<gCloudBaseShapeTextureSize; s++)
 	{
 		const glm::vec3 normFact = glm::vec3(1.0f / float(cloudBaseShapeTextureSize));
@@ -133,8 +208,8 @@ int main (int argc, char *argv[])
 					// Perlin Worley is based on description in GPU Pro 7: Real Time Volumetric Cloudscapes.
 					// However it is not clear the text and the image are matching: images does not seem to match what the result  from the description in text would give.
 					// Also there are a lot of fudge factor in the code, e.g. *0.2, so it is really up to you to fine the formula you like.
-					//PerlinWorleyNoise = remap(worleyFBM, 0.0, 1.0, 0.0, perlinNoise);	// Matches better what figure 4.7 (not the following up text description p.101). Maps worley between newMin as 0 and 
-					PerlinWorleyNoise = remap(perlinNoise, 0.0f, 1.0f, worleyFBM, 1.0f);	// mapping perlin noise in between worley as minimum and 1.0 as maximum (as described in text of p.101 of GPU Pro 7) 
+					PerlinWorleyNoise = remap(worleyFBM, 0.0, 1.0, 0.0, perlinNoise);	// Matches better what figure 4.7 (not the following up text description p.101). Maps worley between newMin as 0 and 
+					//PerlinWorleyNoise = remap(perlinNoise, 0.0f, 1.0f, worleyFBM, 1.0f);	// mapping perlin noise in between worley as minimum and 1.0 as maximum (as described in text of p.101 of GPU Pro 7) 
 				}
 
 				const float cellCount = 4;
@@ -159,20 +234,20 @@ int main (int argc, char *argv[])
 				cloudBaseShapeTexels[addr + 2] = unsigned char(255.0f*worleyFBM1);
 				cloudBaseShapeTexels[addr + 3] = unsigned char(255.0f*worleyFBM2);
 
-				float value = 0.0;
-				{
-					// pack the channels for direct usage in shader
-					float lowFreqFBM = worleyFBM0*0.625f + worleyFBM1*0.25f + worleyFBM2*0.125f;
-					float baseCloud = PerlinWorleyNoise;
-					value = remap(baseCloud, -(1.0f - lowFreqFBM), 1.0f, 0.0f, 1.0f);
-					// Saturate
-					value = std::fminf(value, 1.0f);
-					value = std::fmaxf(value, 0.0f);
-				}
-				cloudBaseShapeTexelsPacked[addr] = unsigned char(255.0f*value);
-				cloudBaseShapeTexelsPacked[addr + 1] = unsigned char(255.0f*value);
-				cloudBaseShapeTexelsPacked[addr + 2] = unsigned char(255.0f*value);
-				cloudBaseShapeTexelsPacked[addr + 3] = unsigned char(255.0f);
+				//float value = 0.0;
+				//{
+				//	// pack the channels for direct usage in shader
+				//	float lowFreqFBM = worleyFBM0*0.625f + worleyFBM1*0.25f + worleyFBM2*0.125f;
+				//	float baseCloud = PerlinWorleyNoise;
+				//	value = remap(baseCloud, -(1.0f - lowFreqFBM), 1.0f, 0.0f, 1.0f);
+				//	// Saturate
+				//	value = std::fminf(value, 1.0f);
+				//	value = std::fmaxf(value, 0.0f);
+				//}
+				//cloudBaseShapeTexelsPacked[addr] = unsigned char(255.0f*value);
+				//cloudBaseShapeTexelsPacked[addr + 1] = unsigned char(255.0f*value);
+				//cloudBaseShapeTexelsPacked[addr + 2] = unsigned char(255.0f*value);
+				//cloudBaseShapeTexelsPacked[addr + 3] = unsigned char(255.0f);
 			}
 		}
 	}
@@ -180,8 +255,9 @@ int main (int argc, char *argv[])
 	{
 		int width = cloudBaseShapeTextureSize*cloudBaseShapeTextureSize;
 		int height = cloudBaseShapeTextureSize;
-		writeTGA("noiseShape.tga",       width, height, cloudBaseShapeTexels);
-		writeTGA("noiseShapePacked.tga", width, height, cloudBaseShapeTexelsPacked);
+		writeKTX("noiseShape.ktx", cloudBaseShapeTextureSize, cloudBaseShapeTextureSize, cloudBaseShapeTextureSize, cloudBaseShapeTexels);
+		//writeTGA("noiseShape.tga",       width, height, cloudBaseShapeTexels);
+		//writeTGA("noiseShapePacked.tga", width, height, cloudBaseShapeTexelsPacked);
 	}
 
 
@@ -196,7 +272,7 @@ int main (int argc, char *argv[])
 	int cloudErosionSliceBytes = cloudErosionRowBytes * cloudErosionTextureSize;
 	int cloudErosionVolumeBytes = cloudErosionSliceBytes * cloudErosionTextureSize;
 	unsigned char* cloudErosionTexels = (unsigned char*)malloc(cloudErosionVolumeBytes);
-	unsigned char* cloudErosionTexelsPacked = (unsigned char*)malloc(cloudErosionVolumeBytes);
+	//unsigned char* cloudErosionTexelsPacked = (unsigned char*)malloc(cloudErosionVolumeBytes);
 	parallel_for(int(0), int(cloudErosionTextureSize), [&](int s) //for (int s = 0; s<gCloudErosionTextureSize; s++)
 	{
 		const glm::vec3 normFact = glm::vec3(1.0f / float(cloudErosionTextureSize));
@@ -234,14 +310,14 @@ int main (int argc, char *argv[])
 				cloudErosionTexels[addr + 2] = unsigned char(255.0f*worleyFBM2);
 				cloudErosionTexels[addr + 3] = unsigned char(255.0f);
 
-				float value = 0.0;
-				{
-					value = worleyFBM0*0.625f + worleyFBM1*0.25f + worleyFBM2*0.125f;
-				}
-				cloudErosionTexelsPacked[addr] = unsigned char(255.0f * value);
-				cloudErosionTexelsPacked[addr + 1] = unsigned char(255.0f * value);
-				cloudErosionTexelsPacked[addr + 2] = unsigned char(255.0f * value);
-				cloudErosionTexelsPacked[addr + 3] = unsigned char(255.0f);
+				//float value = 0.0;
+				//{
+				//	value = worleyFBM0*0.625f + worleyFBM1*0.25f + worleyFBM2*0.125f;
+				//}
+				//cloudErosionTexelsPacked[addr] = unsigned char(255.0f * value);
+				//cloudErosionTexelsPacked[addr + 1] = unsigned char(255.0f * value);
+				//cloudErosionTexelsPacked[addr + 2] = unsigned char(255.0f * value);
+				//cloudErosionTexelsPacked[addr + 3] = unsigned char(255.0f);
 			}
 		}
 	}
@@ -249,8 +325,9 @@ int main (int argc, char *argv[])
 	{
 		int width = cloudErosionTextureSize*cloudErosionTextureSize;
 		int height = cloudErosionTextureSize;
-		writeTGA("noiseErosion.tga",       width, height, cloudErosionTexels);
-		writeTGA("noiseErosionPacked.tga", width, height, cloudErosionTexelsPacked);
+		writeKTX("noiseErosion.ktx", cloudErosionTextureSize, cloudErosionTextureSize, cloudErosionTextureSize, cloudErosionTexels);
+		//writeTGA("noiseErosion.tga",       width, height, cloudErosionTexels);
+		//writeTGA("noiseErosionPacked.tga", width, height, cloudErosionTexelsPacked);
 	}
 
 #if 0
@@ -341,10 +418,10 @@ int main (int argc, char *argv[])
 	debugPrintTileability(addrSrcXZ, addrDst, "XZ");
 #endif
 
+	free(cloudBaseShapeTexels);
+	//free(cloudErosionTexelsPacked);
 	free(cloudErosionTexels);
-	free(cloudErosionTexelsPacked);
-	free(cloudErosionTexels);
-	free(cloudErosionTexelsPacked);
+	//free(cloudErosionTexelsPacked);
 
     return 0;
 }
